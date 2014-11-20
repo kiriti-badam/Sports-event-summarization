@@ -33,4 +33,3 @@ for i in range(1,len(slopes)-1):
     if slopes[i-1]>0 and slopes[i]<0 and values[i] > 2*slopes.std():
         print "index, value, slope (i-1,i)", i, values[i], slopes[i-1],slopes[i]
 
-
