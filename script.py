@@ -10,6 +10,11 @@ from nltk.corpus import stopwords
 fmt = "%Y-%m-%d %H:%M:%S"
 base_time = "2010-06-18 13:45:00"
 
+def gen_stop_words():
+    stop_words = stopwords.words("english")
+    stop_words += ["usa","slo","slovenia","worldcup","...","svn","yes","fuck","shit","crap","goal","wc2010","worldcup","n't","'s"]
+    return stop_words
+
 def construct_dictionary(file_name):
     dict_obj = {}
     f = open("dictionary","r")
@@ -54,17 +59,17 @@ def calculate_time_freq(source_file, base_time, output_file):
 
     print "COMPLETED"
 
-def is_proper_english(tweet,threshold):
+def is_proper_english(tweet,threshold = 3):
 
     dict_obj = construct_dictionary("dictionary")
     words = nltk.word_tokenize(tweet)
-    synsets_len = []
+    scores = []
     #print words
     for word in words:
         if word.isalpha():
-            synsets_len.append(dict_obj.get(word,0))
-    #print synsets_len
-    if synsets_len.count(0) > threshold:
+            scores.append(dict_obj.get(word,0))
+    #print scores
+    if len(scores) - scores.count(0) < threshold:
         return False
     else:
         return True
@@ -74,7 +79,7 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
         Filtering criteria: Remove tweets with RT, @, http://
     """
     
-    patterns = ["http://",".com","RT", "@"]
+    patterns = ["http://",".com","RT", "@","fuck","crap","shit","wtf","i","we","our"]
     tweets_obj = {}
     f = open(source_file, 'r')
     r = csv.reader(f, delimiter = '\t')
@@ -92,8 +97,6 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
             if t[2] != "en":
                 continue
             tweet = t[3]
-            if any(i in tweet for i in patterns):
-                continue
 
             try:
                 tweet.decode("ascii")
@@ -101,6 +104,10 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
                 continue
 
             tweet = tweet.lower()
+
+            if any(i in tweet for i in patterns):
+                continue
+
             if not is_proper_english(tweet,threshold):
                 continue
 
@@ -129,8 +136,7 @@ def top_k_tweets(tweets, words_k, tweets_k):
     """
     word_score = {}
     tweet_score = []
-    stop_words = stopwords.words("english")
-    stop_words += ["usa","slo","slovenia","worldcup","...","svn","yes","fuck","goal","shit","wc2010","worldcup"]
+    stop_words = gen_stop_words()
     for tweet in tweets:
         words = nltk.word_tokenize(tweet)
         for word in words:
@@ -153,13 +159,14 @@ def top_k_tweets(tweets, words_k, tweets_k):
     #Calculating score of each tweet
     for tweet in tweets:
         score = 0
-        for word in nltk.word_tokenize(tweet):
+        for word in set(nltk.word_tokenize(tweet)):
             if word in top_k_words:
-                score += words_k+10 - top_k_words.index(word)
+                score += sorted_word_score[top_k_words.index(word)][1]
+                #score += words_k+10 - top_k_words.index(word)
         tweet_score.append((tweet,score))
 
     sorted_tweets = sorted(tweet_score, key=operator.itemgetter(1),reverse = True)
-
+    
     count = 0
     for (tweet,score) in sorted_tweets:
         if count > tweets_k:
@@ -167,9 +174,74 @@ def top_k_tweets(tweets, words_k, tweets_k):
         print tweet,score
         count += 1
 
-    return sorted_tweets
+    result = [tweet for (tweet,score) in sorted_tweets]
+
+    return result[:tweets_k]
+
+def k_subsets_i(n, k):
+    '''
+    Yield each subset of size k from the set of intergers 0 .. n - 1
+    n -- an integer > 0
+    k -- an integer > 0
+    '''
+    # Validate args
+    if n < 0:
+        raise ValueError('n must be > 0, got n=%d' % n)
+    if k < 0:
+        raise ValueError('k must be > 0, got k=%d' % k)
+    # check base cases
+    if k == 0 or n < k:
+        yield set()
+    elif n == k:
+        yield set(range(n))
+
+    else:
+        # Use recursive formula based on binomial coeffecients:
+        # choose(n, k) = choose(n - 1, k - 1) + choose(n - 1, k)
+        for s in k_subsets_i(n - 1, k - 1):
+            s.add(n - 1)
+            yield s
+        for s in k_subsets_i(n - 1, k):
+            yield s
+
+def k_subsets(s, k):
+    s = list(s)
+    n = len(s)
+    for k_set in k_subsets_i(n, k):
+        yield set([s[i] for i in k_set])
+
+def generate_nck(n,k):
+    result = []
+    for t in k_subsets(range(0,n),k):
+        result.append(list(t))
+    return result
+
+def refine_tweets_jaccard(tweets, no_of_tweets):
+
+    pairs = generate_nck(len(tweets),no_of_tweets) 
+
+    pair_score = []
+    for pair in pairs:
+        score = 0
+        for i in range(0,len(pair)):
+            for j in range(i+1,len(pair)):
+                score += jaccard_similarity(tweets[pair[i]],tweets[pair[j]])
+                #print i,j,jaccard_similarity(tweets[pair[i]],tweets[pair[j]])
+        #print pair,score
+        pair_score.append((pair,score))
+
+    sorted_pair_score = sorted(pair_score, key=operator.itemgetter(1))
+
+    top_k_index = sorted_pair_score[0][0]
+    result = []
+    for i in range(0,len(top_k_index)):
+        result.append(tweets[top_k_index[i]])
+        print tweets[top_k_index[i]]
+
+    return result
+
         
-def jaccard_similarity(tweet1, tweet2,stop_words):
+def jaccard_similarity(tweet1, tweet2):
     """
         Returns the jaccard similarity between two tweets.
 
@@ -178,8 +250,20 @@ def jaccard_similarity(tweet1, tweet2,stop_words):
         N(A) u N(B)
     """
 
-    words1 = set(nltk.word_tokenize(tweet1)) - set(stop_words)
-    words2 = set(nltk.word_tokenize(tweet2)) - set(stop_words)
+    stop_words = gen_stop_words()
+    words1 = []
+    words2 = []
+    for word in nltk.word_tokenize(tweet1):
+        if len(word) > 2 and word not in stop_words:
+            words1.append(word)
+
+    for word in nltk.word_tokenize(tweet2):
+        if len(word) > 2 and word not in stop_words:
+            words2.append(word)
+
+
+    words1 = set(words1)
+    words2 = set(words2)
     
     return (len(list(words1&words2))+0.)/len(list(words1|words2))
 
@@ -191,13 +275,12 @@ def top_k_tweets_jaccard(tweets,k):
     temp_scores = {}
     scores = {}
 
-    stop_words = stopwords.words("english")
-    stop_words += ["usa","slo","slovenia","worldcup","...","svn","yes","fuck","goal","shit","wc2010","worldcup"]
+    stop_words = gen_stop_words()
 
     for i in range(0,len(tweets)):
         for j in range(0,len(tweets)):
             if i!=j and not temp_scores.has_key(str(j)+":"+str(i)):
-                temp_scores[str(i)+":"+str(j)] = jaccard_similarity(tweets[i],tweets[j],stop_words)
+                temp_scores[str(i)+":"+str(j)] = jaccard_similarity(tweets[i],tweets[j])
                 print i,j
     
     print "Scores calculated"
