@@ -1,4 +1,4 @@
 Sports-event-summerization
 ==========================
 
-Summarizing sport events based on the tweets.
+Summarizing football match using the tweets by the crowd for that particular match.
