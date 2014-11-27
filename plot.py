@@ -1,7 +1,11 @@
-#import matplotlib.pyplot as plt
 import numpy as n
 
 def important_moments(input_file):
+    """
+        Given a input_file in which each line contains time\tfrequency, returns the important_moments to be considered
+        based on the changes in the slope values and the values above a particular threshold.
+        Returns an array of important_moments to be considered in the match
+    """
     f = open(input_file,"r")
     lines = f.readlines()
 
@@ -11,6 +15,7 @@ def important_moments(input_file):
         values.append(int(value))
 
     values = n.array(values)
+    abs_values = n.absolute(values)
     
     slopes = []
     for index in range(0,len(values)-1):
@@ -18,20 +23,14 @@ def important_moments(input_file):
 
     slopes = n.array(slopes)
     
-    slope_median = n.median(slopes)
-    slope_threshold = 3*slope_median
-    slope_threshold = slopes.mean() + 2*slopes.std()
+    threshold = n.median(abs_values) + 0.5*abs_values.std() #Emperical parameter, decided based on the training
 
-    print "Median of slopes is ",slope_median
-    print "Std , Mean is ", slopes.std(), slopes.mean()
-    print "Slope threshold is ",slope_threshold
-
+    print "Median,std of values is ", n.median(abs_values), abs_values.std()
 
     result = []
     for i in range(1,len(slopes)-1):
-        if slopes[i-1]>0 and slopes[i]<0 and values[i] > 1000: #2*slopes.std(): //TODO : Fix upon this later.
+        if slopes[i-1]>0 and slopes[i]<0 and values[i] > threshold: 
             result.append(i)
             print "index, value, slope (i-1,i)", i, values[i], slopes[i-1],slopes[i]
-
     return result
 

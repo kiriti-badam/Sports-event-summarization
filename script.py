@@ -8,16 +8,20 @@ from nltk.corpus import wordnet
 from nltk.corpus import stopwords
 
 fmt = "%Y-%m-%d %H:%M:%S"
+
+#This parameter is just for the usa-slowc2010 match.
+#Starting time of the tweets for the match
 base_time = "2010-06-18 13:45:00"
 
 def gen_stop_words():
     stop_words = stopwords.words("english")
-    stop_words += ["usa","slo","slovenia","worldcup","...","svn","yes","fuck","shit","crap","goal","wc2010","worldcup","n't","'s"]
+    stop_words += ["usa","slo","slovenia","worldcup","...","svn","yes","fuck","shit","crap","goal","yellow","card","red","wc2010","worldcup","n't","'s"]
     return stop_words
 
+#Construct a dictionary object of valid english words
 def construct_dictionary(file_name):
     dict_obj = {}
-    f = open("dictionary","r")
+    f = open("dictionary","rU")
     lines = f.readlines()
     for line in lines:
         dict_obj[line.strip()] = dict_obj.get(line.strip(),0) + 1
@@ -25,9 +29,13 @@ def construct_dictionary(file_name):
     return dict_obj
 
 def calculate_time_freq(source_file, base_time, output_file):
+    """
+        Calculates statistics of time:frequency for a given tweets file and writes the output into output_file
+        base_time : Starting time of the tweets of the match
+    """
 
     freq_obj = {}
-    f = open(source_file, 'r')
+    f = open(source_file, 'rU')
     r = csv.reader(f, delimiter = '\t')
     base_time = datetime.strptime(base_time, fmt)
 
@@ -38,6 +46,10 @@ def calculate_time_freq(source_file, base_time, output_file):
             break
 
         print r.line_num
+
+        #General check conditions placed due to languge consistency
+        if(len(t) < 4):
+            continue
 
         mat=re.match('(\d{4})[/.-](\d{2})[/.-](\d{2})\s(\d{2})[/.:](\d{2})[/.:](\d{2})$',t[0])
         if mat is not None:
@@ -58,8 +70,13 @@ def calculate_time_freq(source_file, base_time, output_file):
     print "max is ", max(freq_obj.values())
 
     print "COMPLETED"
+    return freq_obj
 
 def is_proper_english(tweet,threshold = 3):
+    """
+       Checks whether the value of # of isalpha() words - # of proper english words is greater than a particular threshold
+       Returns True if the tweet has considerable english words, else False
+    """
 
     dict_obj = construct_dictionary("dictionary")
     words = nltk.word_tokenize(tweet)
@@ -74,14 +91,16 @@ def is_proper_english(tweet,threshold = 3):
     else:
         return True
 
-def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
+def extract_minutewise_tweets(source_file, base_time, output_file, threshold = 3):
     """
+        Returns a tweet object with {time:[tweets]} eliminating unwanted tweets as listed below by filtering patterns
         Filtering criteria: Remove tweets with RT, @, http://
     """
     
-    patterns = ["http://",".com","RT", "@","fuck","crap","shit","wtf","i","we","our"]
+    normal_patterns = ["http://",".com","@","fuck","crap","shit","wtf"]
+    exact_patterns = ["i","we","our","RT","me"]
     tweets_obj = {}
-    f = open(source_file, 'r')
+    f = open(source_file, 'rU') #Open the file in rU mode because without this, some strange character is creating error in reading the file
     r = csv.reader(f, delimiter = '\t')
     base_time = datetime.strptime(base_time, fmt)
     while (1):
@@ -92,12 +111,22 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
 
         print r.line_num
 
+        #General check conditions placed due to languge consistency
+        if(len(t) < 4):
+            continue
+
         mat=re.match('(\d{4})[/.-](\d{2})[/.-](\d{2})\s(\d{2})[/.:](\d{2})[/.:](\d{2})$',t[0])
         if mat is not None:
+            #Precautionary check if the match found out is proper i.e., having [date,user,lang, tweet]
+            if len(t) < 4:
+                continue
+
+            #Not always results in english tweets because of twitter's accuracy
             if t[2] != "en":
                 continue
             tweet = t[3]
 
+            #Check for whether the tweet is of some other foreign language
             try:
                 tweet.decode("ascii")
             except UnicodeDecodeError:
@@ -105,7 +134,11 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
 
             tweet = tweet.lower()
 
-            if any(i in tweet for i in patterns):
+            if any(i in tweet for i in normal_patterns):
+                continue
+
+            #The tweet will be removed only if it has exact patterns like I,we,us.
+            if len(re.findall(r'\b(%s)\b' % '|'.join(exact_patterns), tweet)) > 0:
                 continue
 
             if not is_proper_english(tweet,threshold):
@@ -129,7 +162,7 @@ def extract_minutewise_tweets(source_file, base_time, output_file, threshold):
 
 def top_k_tweets(tweets, words_k, tweets_k):
     """
-        Using the top-k-words approach.
+        Returns top_k_tweets using the top-k-words approach.
         tweets: Set of tweets
         words_k : gives the no of top words consider
         tweets_k : No of top tweets to be returned by the function
@@ -179,6 +212,7 @@ def top_k_tweets(tweets, words_k, tweets_k):
     return result[:tweets_k]
 
 def k_subsets_i(n, k):
+
     '''
     Yield each subset of size k from the set of intergers 0 .. n - 1
     n -- an integer > 0
@@ -217,6 +251,11 @@ def generate_nck(n,k):
     return result
 
 def refine_tweets_jaccard(tweets, no_of_tweets):
+    """
+        Generates nc3 pairs among the given n tweets and returns the tuple with 
+        least jaccard_similarity among them.
+        no_of_tweets : Number of tweets to be returned
+    """
 
     pairs = generate_nck(len(tweets),no_of_tweets) 
 
@@ -243,7 +282,7 @@ def refine_tweets_jaccard(tweets, no_of_tweets):
         
 def jaccard_similarity(tweet1, tweet2):
     """
-        Returns the jaccard similarity between two tweets.
+        Returns the jaccard similarity between two tweets, disregarding all the stopwords
 
         N(A) n N(B)
         -----------
@@ -271,6 +310,7 @@ def top_k_tweets_jaccard(tweets,k):
     """
         For each tweet, score is the sum of jaccard similarity of the tweet with the remaining tweets
         in the set.
+        Now returns top k tweets which have the highest scores.
     """
     temp_scores = {}
     scores = {}
@@ -303,3 +343,23 @@ def top_k_tweets_jaccard(tweets,k):
         print tweets[index],score
         count += 1
     
+def hashtag_based_frequency(tweets, hashtag, output_file):
+    """
+        for a given tweets object {time:[tweets]}, returns the statistics of {time: frequency} of all the tweets
+        which have the word (hashtag, but not exactly checking for hashtag) 
+        output_file: Write the {time: frequency} statistics to the output_file
+    """
+    
+    frequency = {}
+    for key in tweets.keys():
+        frequency[key] = 0
+        for tweet in tweets[key]:
+            if hashtag in tweet:
+                print key, tweet
+                frequency[key] = frequency.get(key,0)+1
+    
+    f = open(output_file,"w")
+    for (key,value) in frequency.items():
+        f.write(str(key)+"\t"+str(value)+"\n")    
+    f.close()
+    return frequency

@@ -1,7 +1,11 @@
 from plot import *
 from script import *
 
-def match_summary(tweets_file = "refined_tweets_ascii_3", time_freq_file = "time_freq", k = 2, top_words = 20, top_tweets = 20, tweets_per_moment = 3):
+def match_summary(tweets_file = "refined_tweets_ascii_3_latest_all_patterns", time_freq_file = "time_freq", k = 1, top_words = 20, top_tweets = 20, tweets_per_moment = 3):
+    """
+        Generates the summary of the match using all the methods as described in the report
+    """
+
     moments = important_moments(time_freq_file)
     tweets = pickle.load(open(tweets_file,'r'))
     summary_words = []
